@@ -40,7 +40,6 @@ button,.fileBtn{border:0;border-radius:9px;padding:10px 13px;font-size:14px;font
 .recurring{background:#e8f5e9;color:#186a2f}
 .sinking{background:#fff2cc;color:#7a5800}
 .one-time{background:#f1e8ff;color:#6a32a3}
-.empty{background:white;border:1px dashed #aab7c4;border-radius:14px;padding:20px;color:var(--muted)}
 .footer{color:var(--muted);font-size:13px;line-height:1.45;margin-top:18px}
 @media(max-width:720px){.summary{grid-template-columns:1fr 1fr}.wrap{padding:10px 8px 30px}}
 </style>
@@ -57,7 +56,7 @@ button,.fileBtn{border:0;border-radius:9px;padding:10px 13px;font-size:14px;font
 </div>
 
 <div class="note">
-<b>Private-data version:</b> the GitHub HTML contains no personal dollar amounts. Your actual budget is saved only in Safari on this device. For the easiest setup, import the separate <b>budget-data-import.json</b> file once. You can also enter everything manually below.
+<b>Private-data version:</b> the GitHub HTML contains no personal dollar amounts. Your actual budget is stored only on this device. Import <b>budget-data-import.json</b> once, or enter items manually.
 </div>
 
 <div id="sections"></div>
@@ -66,155 +65,301 @@ button,.fileBtn{border:0;border-radius:9px;padding:10px 13px;font-size:14px;font
   <label class="fileBtn">Import Budget Data
     <input id="jsonImport" type="file" accept=".json,application/json">
   </label>
-  <button onclick="exportJSON()">Export JSON Backup</button>
-  <button onclick="exportCSV()">Download CSV</button>
-  <button onclick="addCustomSection()">Add Category</button>
-  <button class="secondary" onclick="clearLocalData()">Clear Device Data</button>
+  <button id="exportJsonBtn">Export JSON Backup</button>
+  <button id="exportCsvBtn">Download CSV</button>
+  <button id="addCategoryBtn">Add Category</button>
+  <button id="clearBtn" class="secondary">Clear Device Data</button>
 </div>
 
 <div class="footer">
-Imported and edited values are stored with localStorage for this GitHub Pages site. Keep the JSON backup somewhere safe if you may clear Safari website data, switch phones, or change the GitHub Pages address.
+Imported and edited values are saved in Safari localStorage for this GitHub Pages site. Keep a JSON backup if you may clear Safari website data, switch phones, or change the GitHub Pages address.
 </div>
 </div>
 
 <script>
-const STORAGE_KEY='budgetDashboardV4';
+(function(){
+  "use strict";
 
-const blankStructure=[
-{name:'Housing & Core Bills',kind:'recurring',rows:[{d:'New Expense',a:0,t:'monthly'}]},
-{name:'Memberships & Subscriptions',kind:'recurring',rows:[{d:'New Expense',a:0,t:'monthly'}]},
-{name:'Everyday Living',kind:'recurring',rows:[{d:'New Expense',a:0,t:'monthly'}]},
-{name:'Rocket & Luna - Routine',kind:'recurring',rows:[{d:'New Expense',a:0,t:'monthly'}]},
-{name:'Sinking Funds',kind:'sinking',rows:[{d:'New Sinking Fund',a:0,t:'monthly'}]},
-{name:'One-Time / Major Purchases',kind:'one-time',rows:[{d:'New One-Time Purchase',a:0,t:'one-time'}]}
-];
+  const STORAGE_KEY = "budgetDashboardV5";
 
-let data=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null') || JSON.parse(JSON.stringify(blankStructure));
+  const blankStructure = [
+    {name:"Housing & Core Bills",kind:"recurring",rows:[{d:"New Expense",a:0,t:"monthly"}]},
+    {name:"Memberships & Subscriptions",kind:"recurring",rows:[{d:"New Expense",a:0,t:"monthly"}]},
+    {name:"Everyday Living",kind:"recurring",rows:[{d:"New Expense",a:0,t:"monthly"}]},
+    {name:"Rocket & Luna - Routine",kind:"recurring",rows:[{d:"New Expense",a:0,t:"monthly"}]},
+    {name:"Sinking Funds",kind:"sinking",rows:[{d:"New Sinking Fund",a:0,t:"monthly"}]},
+    {name:"One-Time / Major Purchases",kind:"one-time",rows:[{d:"New One-Time Purchase",a:0,t:"one-time"}]}
+  ];
 
-function monthlyValue(r){
- const a=Number(r.a)||0;
- if(r.t==='annual') return a/12;
- if(r.t==='monthly') return a;
- return 0;
-}
-function money(n){return n.toLocaleString('en-US',{style:'currency',currency:'USD'})}
-function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data))}
-function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+  function clone(obj){ return JSON.parse(JSON.stringify(obj)); }
 
-function render(){
- const host=document.getElementById('sections');host.innerHTML='';
- data.forEach((s,si)=>{
-   const kind=s.kind||'recurring';
-   const rows=s.rows||[];
-   const sub=rows.reduce((x,r)=>x+monthlyValue(r),0);
-   const badge=kind==='recurring'?'Normal Budget':kind==='sinking'?'Sinking Fund':'Excluded from Monthly';
-   const headTotal=kind==='one-time'
-     ? 'One-time total: '+money(rows.reduce((x,r)=>x+(Number(r.a)||0),0))
-     : 'Monthly: '+money(sub);
+  let data;
+  try{
+    const saved = localStorage.getItem(STORAGE_KEY);
+    data = saved ? JSON.parse(saved) : clone(blankStructure);
+    if(!Array.isArray(data)) data = clone(blankStructure);
+  }catch(e){
+    data = clone(blankStructure);
+  }
 
-   const sec=document.createElement('div'); sec.className='section';
-   sec.innerHTML=
-   '<div class="section-head"><h2>'+esc(s.name)+' <span class="badge '+kind+'">'+badge+'</span></h2><div class="subtotal">'+headTotal+'</div></div>'+
-   '<div class="table-wrap"><table><thead><tr><th>Description</th><th>Amount</th><th>Type</th><th>Monthly Amount</th><th>Yearly Amount</th><th>Delete</th></tr></thead><tbody>'+
-   rows.map((r,ri)=>
-      '<tr>'+
-      '<td><input value="'+esc(r.d)+'" oninput="upd('+si+','+ri+',\\'d\\',this.value,false)"></td>'+
-      '<td><input type="number" step="0.01" min="0" value="'+(Number(r.a)||0)+'" oninput="upd('+si+','+ri+',\\'a\\',this.value,true)"></td>'+
-      '<td><select onchange="upd('+si+','+ri+',\\'t\\',this.value,true)">'+
-        '<option value="monthly" '+(r.t==='monthly'?'selected':'')+'>Monthly</option>'+
-        '<option value="annual" '+(r.t==='annual'?'selected':'')+'>Annual</option>'+
-        '<option value="one-time" '+(r.t==='one-time'?'selected':'')+'>One-Time</option>'+
-      '</select></td>'+
-      '<td class="money">'+money(monthlyValue(r))+'</td>'+
-      '<td class="money">'+(r.t==='one-time'?'—':money(monthlyValue(r)*12))+'</td>'+
-      '<td><button class="del" onclick="delRow('+si+','+ri+')">X</button></td>'+
-      '</tr>'
-   ).join('')+
-   '</tbody></table></div>'+
-   '<button class="add" onclick="addRow('+si+')">Add Line</button>';
-   host.appendChild(sec);
- });
- totals(); save();
-}
-function totals(){
- const normal=data.filter(s=>(s.kind||'recurring')==='recurring').flatMap(s=>s.rows||[]).reduce((x,r)=>x+monthlyValue(r),0);
- const sinking=data.filter(s=>s.kind==='sinking').flatMap(s=>s.rows||[]).reduce((x,r)=>x+monthlyValue(r),0);
- document.getElementById('normalMonthly').textContent=money(normal);
- document.getElementById('normalAnnual').textContent=money(normal*12);
- document.getElementById('sinkingMonthly').textContent=money(sinking);
- document.getElementById('allMonthly').textContent=money(normal+sinking);
-}
-function upd(si,ri,k,v,rerender){
- data[si].rows[ri][k]=k==='a'?Number(v):v;
- save();
- if(rerender) render(); else totals();
-}
-function delRow(si,ri){
- data[si].rows.splice(ri,1);
- if(data[si].rows.length===0){
-   data[si].rows.push({d:'New Expense',a:0,t:data[si].kind==='one-time'?'one-time':'monthly'});
- }
- render();
-}
-function addRow(si){
- data[si].rows.push({d:'New Expense',a:0,t:data[si].kind==='one-time'?'one-time':'monthly'});
- render();
-}
-function addCustomSection(){
- const n='Custom Category '+(data.filter(s=>s.name.startsWith('Custom Category')).length+1);
- data.push({name:n,kind:'recurring',rows:[{d:'New Expense',a:0,t:'monthly'}]});
- render();
-}
-function clearLocalData(){
- if(confirm('Clear the budget saved on this device and return to blank categories?')){
-   localStorage.removeItem(STORAGE_KEY);
-   data=JSON.parse(JSON.stringify(blankStructure));
-   render();
- }
-}
-function exportJSON(){
- const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
- const a=document.createElement('a');
- a.href=URL.createObjectURL(blob); a.download='budget-dashboard-backup.json';
- document.body.appendChild(a); a.click(); a.remove();
- setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-}
-function exportCSV(){
- let rows=[['Category','Description','Amount','Type','Monthly Amount','Yearly Amount']];
- data.forEach(s=>(s.rows||[]).forEach(r=>rows.push([s.name,r.d,r.a,r.t,monthlyValue(r),r.t==='one-time'?'':monthlyValue(r)*12])));
- const csv=rows.map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
- const blob=new Blob([csv],{type:'text/csv'});
- const a=document.createElement('a');
- a.href=URL.createObjectURL(blob); a.download='budget-dashboard.csv';
- document.body.appendChild(a); a.click(); a.remove();
- setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-}
+  function money(n){
+    return Number(n || 0).toLocaleString("en-US",{style:"currency",currency:"USD"});
+  }
 
-document.getElementById('jsonImport').addEventListener('change', function(e){
- const file=e.target.files && e.target.files[0];
- if(!file) return;
- const reader=new FileReader();
- reader.onload=function(){
-   try{
-     const parsed=JSON.parse(reader.result);
-     if(!Array.isArray(parsed)) throw new Error('Invalid budget file');
-     data=parsed;
-     save();
-     render();
-     alert('Budget imported successfully.');
-   }catch(err){
-     alert('That file could not be imported. Please choose budget-data-import.json or a Budget Dashboard JSON backup.');
-   }
-   e.target.value='';
- };
- reader.onerror=function(){
-   alert('Safari could not read that file. Please try selecting it again from the Files app.');
-   e.target.value='';
- };
- reader.readAsText(file);
-});
+  function monthlyValue(r){
+    const a = Number(r.a) || 0;
+    if(r.t === "annual") return a / 12;
+    if(r.t === "monthly") return a;
+    return 0;
+  }
 
-render();
+  function save(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }catch(e){}
+  }
+
+  function totals(){
+    let normal = 0;
+    let sinking = 0;
+    data.forEach(section=>{
+      (section.rows || []).forEach(r=>{
+        if(section.kind === "recurring") normal += monthlyValue(r);
+        if(section.kind === "sinking") sinking += monthlyValue(r);
+      });
+    });
+    document.getElementById("normalMonthly").textContent = money(normal);
+    document.getElementById("normalAnnual").textContent = money(normal * 12);
+    document.getElementById("sinkingMonthly").textContent = money(sinking);
+    document.getElementById("allMonthly").textContent = money(normal + sinking);
+  }
+
+  function createCellInput(value, type, onChange){
+    const input = document.createElement("input");
+    input.type = type || "text";
+    if(type === "number"){
+      input.step = "0.01";
+      input.min = "0";
+    }
+    input.value = value;
+    input.addEventListener("change", onChange);
+    return input;
+  }
+
+  function createTypeSelect(value, onChange){
+    const select = document.createElement("select");
+    [["monthly","Monthly"],["annual","Annual"],["one-time","One-Time"]].forEach(pair=>{
+      const opt = document.createElement("option");
+      opt.value = pair[0];
+      opt.textContent = pair[1];
+      if(pair[0] === value) opt.selected = true;
+      select.appendChild(opt);
+    });
+    select.addEventListener("change", onChange);
+    return select;
+  }
+
+  function render(){
+    const host = document.getElementById("sections");
+    host.innerHTML = "";
+
+    data.forEach((section, si)=>{
+      const sec = document.createElement("div");
+      sec.className = "section";
+
+      const head = document.createElement("div");
+      head.className = "section-head";
+
+      const title = document.createElement("h2");
+      title.textContent = section.name + " ";
+
+      const badge = document.createElement("span");
+      badge.className = "badge " + section.kind;
+      badge.textContent = section.kind === "recurring" ? "Normal Budget" :
+                          section.kind === "sinking" ? "Sinking Fund" : "Excluded from Monthly";
+      title.appendChild(badge);
+
+      const subtotal = document.createElement("div");
+      subtotal.className = "subtotal";
+      if(section.kind === "one-time"){
+        const total = (section.rows || []).reduce((sum,r)=>sum + (Number(r.a)||0),0);
+        subtotal.textContent = "One-time total: " + money(total);
+      }else{
+        const total = (section.rows || []).reduce((sum,r)=>sum + monthlyValue(r),0);
+        subtotal.textContent = "Monthly: " + money(total);
+      }
+
+      head.appendChild(title);
+      head.appendChild(subtotal);
+      sec.appendChild(head);
+
+      const wrap = document.createElement("div");
+      wrap.className = "table-wrap";
+      const table = document.createElement("table");
+
+      const thead = document.createElement("thead");
+      const hr = document.createElement("tr");
+      ["Description","Amount","Type","Monthly Amount","Yearly Amount","Delete"].forEach(txt=>{
+        const th = document.createElement("th");
+        th.textContent = txt;
+        hr.appendChild(th);
+      });
+      thead.appendChild(hr);
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+
+      (section.rows || []).forEach((row, ri)=>{
+        const tr = document.createElement("tr");
+
+        const tdDesc = document.createElement("td");
+        tdDesc.appendChild(createCellInput(row.d || "", "text", function(){
+          data[si].rows[ri].d = this.value;
+          save();
+        }));
+        tr.appendChild(tdDesc);
+
+        const tdAmt = document.createElement("td");
+        tdAmt.appendChild(createCellInput(Number(row.a)||0, "number", function(){
+          data[si].rows[ri].a = Number(this.value) || 0;
+          render();
+        }));
+        tr.appendChild(tdAmt);
+
+        const tdType = document.createElement("td");
+        tdType.appendChild(createTypeSelect(row.t || "monthly", function(){
+          data[si].rows[ri].t = this.value;
+          render();
+        }));
+        tr.appendChild(tdType);
+
+        const tdMonth = document.createElement("td");
+        tdMonth.className = "money";
+        tdMonth.textContent = money(monthlyValue(row));
+        tr.appendChild(tdMonth);
+
+        const tdYear = document.createElement("td");
+        tdYear.className = "money";
+        tdYear.textContent = row.t === "one-time" ? "—" : money(monthlyValue(row)*12);
+        tr.appendChild(tdYear);
+
+        const tdDel = document.createElement("td");
+        const del = document.createElement("button");
+        del.className = "del";
+        del.textContent = "X";
+        del.addEventListener("click", ()=>{
+          data[si].rows.splice(ri,1);
+          if(data[si].rows.length === 0){
+            data[si].rows.push({d:"New Expense",a:0,t:section.kind === "one-time" ? "one-time" : "monthly"});
+          }
+          render();
+        });
+        tdDel.appendChild(del);
+        tr.appendChild(tdDel);
+
+        tbody.appendChild(tr);
+      });
+
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      sec.appendChild(wrap);
+
+      const addLine = document.createElement("button");
+      addLine.className = "add";
+      addLine.textContent = "Add Line";
+      addLine.addEventListener("click", ()=>{
+        data[si].rows.push({d:"New Expense",a:0,t:section.kind === "one-time" ? "one-time" : "monthly"});
+        render();
+      });
+      sec.appendChild(addLine);
+
+      host.appendChild(sec);
+    });
+
+    totals();
+    save();
+  }
+
+  document.getElementById("addCategoryBtn").addEventListener("click", ()=>{
+    const count = data.filter(s=>String(s.name).startsWith("Custom Category")).length + 1;
+    data.push({name:"Custom Category " + count,kind:"recurring",rows:[{d:"New Expense",a:0,t:"monthly"}]});
+    render();
+  });
+
+  document.getElementById("clearBtn").addEventListener("click", ()=>{
+    if(confirm("Clear the budget saved on this device and return to blank categories?")){
+      data = clone(blankStructure);
+      try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
+      render();
+    }
+  });
+
+  document.getElementById("jsonImport").addEventListener("change", function(){
+    const file = this.files && this.files[0];
+    if(!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = ()=>{
+      try{
+        const parsed = JSON.parse(reader.result);
+        if(!Array.isArray(parsed)) throw new Error("Budget file is not an array.");
+        data = parsed;
+        save();
+        render();
+        alert("Budget imported successfully.");
+      }catch(e){
+        alert("That JSON file could not be imported. Please choose budget-data-import.json.");
+      }
+      this.value = "";
+    };
+
+    reader.onerror = ()=>{
+      alert("Safari could not read that file. Please try selecting it again.");
+      this.value = "";
+    };
+
+    reader.readAsText(file);
+  });
+
+  document.getElementById("exportJsonBtn").addEventListener("click", ()=>{
+    const blob = new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "budget-dashboard-backup.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  });
+
+  document.getElementById("exportCsvBtn").addEventListener("click", ()=>{
+    const rows = [["Category","Description","Amount","Type","Monthly Amount","Yearly Amount"]];
+    data.forEach(section=>{
+      (section.rows || []).forEach(r=>{
+        rows.push([
+          section.name,
+          r.d,
+          r.a,
+          r.t,
+          monthlyValue(r),
+          r.t === "one-time" ? "" : monthlyValue(r)*12
+        ]);
+      });
+    });
+    const csv = rows.map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\n");
+    const blob = new Blob([csv],{type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "budget-dashboard.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  });
+
+  render();
+})();
 </script>
 </body>
 </html>
