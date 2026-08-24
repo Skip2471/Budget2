@@ -40,7 +40,7 @@ button,.fileBtn{border:0;border-radius:9px;padding:10px 13px;font-size:14px;font
 .recurring{background:#e8f5e9;color:#186a2f}
 .sinking{background:#fff2cc;color:#7a5800}
 .one-time{background:#f1e8ff;color:#6a32a3}
-.empty{background:white;border:1px dashed #aab7c4;border-radius:14px;padding:26px;text-align:center;color:var(--muted)}
+.empty{background:white;border:1px dashed #aab7c4;border-radius:14px;padding:20px;color:var(--muted)}
 .footer{color:var(--muted);font-size:13px;line-height:1.45;margin-top:18px}
 @media(max-width:720px){.summary{grid-template-columns:1fr 1fr}.wrap{padding:10px 8px 30px}}
 </style>
@@ -57,16 +57,13 @@ button,.fileBtn{border:0;border-radius:9px;padding:10px 13px;font-size:14px;font
 </div>
 
 <div class="note">
-<b>Private-data version:</b> this GitHub file contains no personal budget amounts. Your budget is stored only in this browser on this device. Use <b>Import Prior HTML</b> once to pull the starting data from the previous Budget Dashboard HTML, or import a JSON backup later.
+<b>Private-data version:</b> the GitHub HTML contains no personal dollar amounts. Your actual budget is saved only in Safari on this device. For the easiest setup, import the separate <b>budget-data-import.json</b> file once. You can also enter everything manually below.
 </div>
 
 <div id="sections"></div>
 
 <div class="toolbar">
-  <label class="fileBtn">Import Prior HTML
-    <input id="htmlImport" type="file" accept=".html,text/html">
-  </label>
-  <label class="fileBtn">Import JSON Backup
+  <label class="fileBtn">Import Budget Data
     <input id="jsonImport" type="file" accept=".json,application/json">
   </label>
   <button onclick="exportJSON()">Export JSON Backup</button>
@@ -76,13 +73,23 @@ button,.fileBtn{border:0;border-radius:9px;padding:10px 13px;font-size:14px;font
 </div>
 
 <div class="footer">
-The HTML stored on GitHub has no prefilled personal amounts. Imported and edited values are saved with localStorage in Safari for this site. Keep a JSON backup if you may clear Safari website data, switch phones, or change the GitHub Pages domain.
+Imported and edited values are stored with localStorage for this GitHub Pages site. Keep the JSON backup somewhere safe if you may clear Safari website data, switch phones, or change the GitHub Pages address.
 </div>
 </div>
 
 <script>
-const STORAGE_KEY='budgetDashboardV3';
-let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || [];
+const STORAGE_KEY='budgetDashboardV4';
+
+const blankStructure=[
+{name:'Housing & Core Bills',kind:'recurring',rows:[{d:'New Expense',a:0,t:'monthly'}]},
+{name:'Memberships & Subscriptions',kind:'recurring',rows:[{d:'New Expense',a:0,t:'monthly'}]},
+{name:'Everyday Living',kind:'recurring',rows:[{d:'New Expense',a:0,t:'monthly'}]},
+{name:'Rocket & Luna - Routine',kind:'recurring',rows:[{d:'New Expense',a:0,t:'monthly'}]},
+{name:'Sinking Funds',kind:'sinking',rows:[{d:'New Sinking Fund',a:0,t:'monthly'}]},
+{name:'One-Time / Major Purchases',kind:'one-time',rows:[{d:'New One-Time Purchase',a:0,t:'one-time'}]}
+];
+
+let data=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null') || JSON.parse(JSON.stringify(blankStructure));
 
 function monthlyValue(r){
  const a=Number(r.a)||0;
@@ -90,42 +97,42 @@ function monthlyValue(r){
  if(r.t==='monthly') return a;
  return 0;
 }
-function money(n){return n.toLocaleString('en-US',{style:'currency',currency:'USD'});}
-function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
-function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function money(n){return n.toLocaleString('en-US',{style:'currency',currency:'USD'})}
+function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data))}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 
 function render(){
- const host=document.getElementById('sections'); host.innerHTML='';
- if(!data.length){
-   host.innerHTML='<div class="empty"><b>No budget data on this device yet.</b><br><br>Tap <b>Import Prior HTML</b> and choose your previous <i>budget-dashboard-updated.html</i> file.</div>';
-   totals(); return;
- }
+ const host=document.getElementById('sections');host.innerHTML='';
  data.forEach((s,si)=>{
-  const sec=document.createElement('div'); sec.className='section';
-  const sub=(s.rows||[]).reduce((x,r)=>x+monthlyValue(r),0);
-  const kind=s.kind||'recurring';
-  const badge=kind==='recurring'?'Normal Budget':kind==='sinking'?'Sinking Fund':'Excluded from Monthly';
-  const headTotal=kind==='one-time'
-    ? 'One-time total: '+money((s.rows||[]).reduce((x,r)=>x+(Number(r.a)||0),0))
-    : 'Monthly: '+money(sub);
-  sec.innerHTML=
+   const kind=s.kind||'recurring';
+   const rows=s.rows||[];
+   const sub=rows.reduce((x,r)=>x+monthlyValue(r),0);
+   const badge=kind==='recurring'?'Normal Budget':kind==='sinking'?'Sinking Fund':'Excluded from Monthly';
+   const headTotal=kind==='one-time'
+     ? 'One-time total: '+money(rows.reduce((x,r)=>x+(Number(r.a)||0),0))
+     : 'Monthly: '+money(sub);
+
+   const sec=document.createElement('div'); sec.className='section';
+   sec.innerHTML=
    '<div class="section-head"><h2>'+esc(s.name)+' <span class="badge '+kind+'">'+badge+'</span></h2><div class="subtotal">'+headTotal+'</div></div>'+
    '<div class="table-wrap"><table><thead><tr><th>Description</th><th>Amount</th><th>Type</th><th>Monthly Amount</th><th>Yearly Amount</th><th>Delete</th></tr></thead><tbody>'+
-   (s.rows||[]).map((r,ri)=>
-    '<tr>'+
-    '<td><input value="'+esc(r.d)+'" onchange="upd('+si+','+ri+',\\'d\\',this.value)"></td>'+
-    '<td><input type="number" step="0.01" min="0" value="'+(Number(r.a)||0)+'" onchange="upd('+si+','+ri+',\\'a\\',this.value)"></td>'+
-    '<td><select onchange="upd('+si+','+ri+',\\'t\\',this.value)">'+
-      '<option value="monthly" '+(r.t==='monthly'?'selected':'')+'>Monthly</option>'+
-      '<option value="annual" '+(r.t==='annual'?'selected':'')+'>Annual</option>'+
-      '<option value="one-time" '+(r.t==='one-time'?'selected':'')+'>One-Time</option>'+
-    '</select></td>'+
-    '<td class="money">'+money(monthlyValue(r))+'</td>'+
-    '<td class="money">'+(r.t==='one-time'?'—':money(monthlyValue(r)*12))+'</td>'+
-    '<td><button class="del" onclick="delRow('+si+','+ri+')">X</button></td>'+
-    '</tr>').join('')+
-   '</tbody></table></div><button class="add" onclick="addRow('+si+')">Add Line</button>';
-  host.appendChild(sec);
+   rows.map((r,ri)=>
+      '<tr>'+
+      '<td><input value="'+esc(r.d)+'" oninput="upd('+si+','+ri+',\\'d\\',this.value,false)"></td>'+
+      '<td><input type="number" step="0.01" min="0" value="'+(Number(r.a)||0)+'" oninput="upd('+si+','+ri+',\\'a\\',this.value,true)"></td>'+
+      '<td><select onchange="upd('+si+','+ri+',\\'t\\',this.value,true)">'+
+        '<option value="monthly" '+(r.t==='monthly'?'selected':'')+'>Monthly</option>'+
+        '<option value="annual" '+(r.t==='annual'?'selected':'')+'>Annual</option>'+
+        '<option value="one-time" '+(r.t==='one-time'?'selected':'')+'>One-Time</option>'+
+      '</select></td>'+
+      '<td class="money">'+money(monthlyValue(r))+'</td>'+
+      '<td class="money">'+(r.t==='one-time'?'—':money(monthlyValue(r)*12))+'</td>'+
+      '<td><button class="del" onclick="delRow('+si+','+ri+')">X</button></td>'+
+      '</tr>'
+   ).join('')+
+   '</tbody></table></div>'+
+   '<button class="add" onclick="addRow('+si+')">Add Line</button>';
+   host.appendChild(sec);
  });
  totals(); save();
 }
@@ -137,81 +144,74 @@ function totals(){
  document.getElementById('sinkingMonthly').textContent=money(sinking);
  document.getElementById('allMonthly').textContent=money(normal+sinking);
 }
-function upd(si,ri,k,v){data[si].rows[ri][k]=k==='a'?Number(v):v;render();}
-function delRow(si,ri){data[si].rows.splice(ri,1);render();}
-function addRow(si){data[si].rows.push({d:'New Expense',a:0,t:data[si].kind==='one-time'?'one-time':'monthly'});render();}
+function upd(si,ri,k,v,rerender){
+ data[si].rows[ri][k]=k==='a'?Number(v):v;
+ save();
+ if(rerender) render(); else totals();
+}
+function delRow(si,ri){
+ data[si].rows.splice(ri,1);
+ if(data[si].rows.length===0){
+   data[si].rows.push({d:'New Expense',a:0,t:data[si].kind==='one-time'?'one-time':'monthly'});
+ }
+ render();
+}
+function addRow(si){
+ data[si].rows.push({d:'New Expense',a:0,t:data[si].kind==='one-time'?'one-time':'monthly'});
+ render();
+}
 function addCustomSection(){
- const name=prompt('Category name:'); if(!name)return;
- data.push({name,kind:'recurring',rows:[]});render();
+ const n='Custom Category '+(data.filter(s=>s.name.startsWith('Custom Category')).length+1);
+ data.push({name:n,kind:'recurring',rows:[{d:'New Expense',a:0,t:'monthly'}]});
+ render();
 }
 function clearLocalData(){
- if(confirm('Clear the budget saved on this device? Export a JSON backup first if you want to keep it.')){
-   localStorage.removeItem(STORAGE_KEY); data=[]; render();
+ if(confirm('Clear the budget saved on this device and return to blank categories?')){
+   localStorage.removeItem(STORAGE_KEY);
+   data=JSON.parse(JSON.stringify(blankStructure));
+   render();
  }
 }
 function exportJSON(){
  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
- const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
- a.download='budget-dashboard-backup.json'; a.click(); URL.revokeObjectURL(a.href);
+ const a=document.createElement('a');
+ a.href=URL.createObjectURL(blob); a.download='budget-dashboard-backup.json';
+ document.body.appendChild(a); a.click(); a.remove();
+ setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 function exportCSV(){
  let rows=[['Category','Description','Amount','Type','Monthly Amount','Yearly Amount']];
  data.forEach(s=>(s.rows||[]).forEach(r=>rows.push([s.name,r.d,r.a,r.t,monthlyValue(r),r.t==='one-time'?'':monthlyValue(r)*12])));
- const csv=rows.map(row=>row.map(v=>'"'+String(v).replaceAll('"','""')+'"').join(',')).join('\\n');
+ const csv=rows.map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
  const blob=new Blob([csv],{type:'text/csv'});
- const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
- a.download='budget-dashboard.csv'; a.click(); URL.revokeObjectURL(a.href);
+ const a=document.createElement('a');
+ a.href=URL.createObjectURL(blob); a.download='budget-dashboard.csv';
+ document.body.appendChild(a); a.click(); a.remove();
+ setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 
-document.getElementById('jsonImport').addEventListener('change', async e=>{
- const file=e.target.files[0]; if(!file)return;
- try{
-   const parsed=JSON.parse(await file.text());
-   if(!Array.isArray(parsed)) throw new Error('Invalid budget backup.');
-   data=parsed; render(); alert('Budget imported and saved on this device.');
- }catch(err){ alert('I could not import that JSON file.'); }
- e.target.value='';
-});
-
-document.getElementById('htmlImport').addEventListener('change', async e=>{
- const file=e.target.files[0]; if(!file)return;
- try{
-   const text=await file.text();
-
-   // Supports the immediately previous Budget Dashboard HTML,
-   // which stored its starting rows in: const defaults=[ ... ];
-   const marker='const defaults=';
-   const start=text.indexOf(marker);
-   if(start<0) throw new Error('defaults not found');
-
-   let i=start+marker.length;
-   while(i<text.length && /\\s/.test(text[i])) i++;
-   if(text[i] !== '[') throw new Error('array not found');
-
-   let depth=0, inString=false, quote='', escaped=false, end=-1;
-   for(let j=i;j<text.length;j++){
-     const ch=text[j];
-     if(inString){
-       if(escaped){escaped=false;continue;}
-       if(ch==='\\\\'){escaped=true;continue;}
-       if(ch===quote){inString=false;quote='';}
-       continue;
-     }
-     if(ch==='"' || ch==="'" || ch==='`'){inString=true;quote=ch;continue;}
-     if(ch==='[') depth++;
-     if(ch===']'){depth--; if(depth===0){end=j+1;break;}}
+document.getElementById('jsonImport').addEventListener('change', function(e){
+ const file=e.target.files && e.target.files[0];
+ if(!file) return;
+ const reader=new FileReader();
+ reader.onload=function(){
+   try{
+     const parsed=JSON.parse(reader.result);
+     if(!Array.isArray(parsed)) throw new Error('Invalid budget file');
+     data=parsed;
+     save();
+     render();
+     alert('Budget imported successfully.');
+   }catch(err){
+     alert('That file could not be imported. Please choose budget-data-import.json or a Budget Dashboard JSON backup.');
    }
-   if(end<0) throw new Error('array end not found');
-
-   const arrayText=text.slice(i,end);
-   const imported=(new Function('"use strict"; return ('+arrayText+');'))();
-   if(!Array.isArray(imported)) throw new Error('invalid data');
-   data=imported; render();
-   alert('Previous Budget Dashboard data imported and saved on this device.');
- }catch(err){
-   alert('I could not read budget data from that HTML. Choose the budget-dashboard-updated.html file from the prior version.');
- }
- e.target.value='';
+   e.target.value='';
+ };
+ reader.onerror=function(){
+   alert('Safari could not read that file. Please try selecting it again from the Files app.');
+   e.target.value='';
+ };
+ reader.readAsText(file);
 });
 
 render();
