@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Budget Dashboard</title>
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Budget">
+<meta name="theme-color" content="#0b74e5">
+<style>
+:root{--blue:#0b74e5;--green:#169447;--red:#ff4d55;--ink:#18202a;--muted:#667085;--bg:#f4f7fb;--card:#fff;--line:#d9e1ea;--soft:#edf6ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink)}
+.wrap{max-width:1100px;margin:auto;padding:18px 12px 40px}
+h1{text-align:center;margin:4px 0 14px;font-size:clamp(28px,5vw,42px)}
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.stat small{display:block;color:var(--muted);font-weight:700;margin-bottom:6px}
+.stat b{font-size:clamp(20px,3vw,28px)}
+.note{background:#eef7ff;border:1px solid #b8d8f5;border-radius:12px;padding:12px 14px;margin:10px 0 18px;line-height:1.45}
+.section{background:var(--card);border:1px solid var(--line);border-radius:16px;margin:14px 0;overflow:hidden}
+.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--soft);padding:13px 15px;border-bottom:1px solid var(--line)}
+.section-head h2{margin:0;font-size:21px}
+.section-head .subtotal{font-weight:800}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:760px}
+th,td{border-bottom:1px solid var(--line);padding:9px 8px;text-align:left}
+th{background:#f9fbfd;font-size:13px;color:#475467}
+input,select{width:100%;padding:9px 8px;border:1px solid #cfd8e3;border-radius:8px;font-size:15px;background:white}
+.money{font-weight:800;white-space:nowrap}
+button,.fileBtn{border:0;border-radius:9px;padding:10px 13px;font-size:14px;font-weight:700;cursor:pointer;display:inline-block}
+.del{background:var(--red);color:white}
+.add{background:var(--green);color:white;margin:10px 12px}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.toolbar button,.toolbar .fileBtn{background:var(--blue);color:white}
+.toolbar .secondary{background:#475467}
+.fileBtn input{display:none}
+.badge{display:inline-block;padding:3px 7px;border-radius:999px;font-size:12px;font-weight:800}
+.recurring{background:#e8f5e9;color:#186a2f}
+.sinking{background:#fff2cc;color:#7a5800}
+.one-time{background:#f1e8ff;color:#6a32a3}
+.empty{background:white;border:1px dashed #aab7c4;border-radius:14px;padding:26px;text-align:center;color:var(--muted)}
+.footer{color:var(--muted);font-size:13px;line-height:1.45;margin-top:18px}
+@media(max-width:720px){.summary{grid-template-columns:1fr 1fr}.wrap{padding:10px 8px 30px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Budget Dashboard</h1>
+
+<div class="summary">
+  <div class="stat"><small>Normal Monthly Budget</small><b id="normalMonthly">$0.00</b></div>
+  <div class="stat"><small>Annualized Normal Budget</small><b id="normalAnnual">$0.00</b></div>
+  <div class="stat"><small>Monthly Sinking Funds</small><b id="sinkingMonthly">$0.00</b></div>
+  <div class="stat"><small>All Monthly Targets</small><b id="allMonthly">$0.00</b></div>
+</div>
+
+<div class="note">
+<b>Private-data version:</b> this GitHub file contains no personal budget amounts. Your budget is stored only in this browser on this device. Use <b>Import Prior HTML</b> once to pull the starting data from the previous Budget Dashboard HTML, or import a JSON backup later.
+</div>
+
+<div id="sections"></div>
+
+<div class="toolbar">
+  <label class="fileBtn">Import Prior HTML
+    <input id="htmlImport" type="file" accept=".html,text/html">
+  </label>
+  <label class="fileBtn">Import JSON Backup
+    <input id="jsonImport" type="file" accept=".json,application/json">
+  </label>
+  <button onclick="exportJSON()">Export JSON Backup</button>
+  <button onclick="exportCSV()">Download CSV</button>
+  <button onclick="addCustomSection()">Add Category</button>
+  <button class="secondary" onclick="clearLocalData()">Clear Device Data</button>
+</div>
+
+<div class="footer">
+The HTML stored on GitHub has no prefilled personal amounts. Imported and edited values are saved with localStorage in Safari for this site. Keep a JSON backup if you may clear Safari website data, switch phones, or change the GitHub Pages domain.
+</div>
+</div>
+
+<script>
+const STORAGE_KEY='budgetDashboardV3';
+let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null') || [];
+
+function monthlyValue(r){
+ const a=Number(r.a)||0;
+ if(r.t==='annual') return a/12;
+ if(r.t==='monthly') return a;
+ return 0;
+}
+function money(n){return n.toLocaleString('en-US',{style:'currency',currency:'USD'});}
+function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+function render(){
+ const host=document.getElementById('sections'); host.innerHTML='';
+ if(!data.length){
+   host.innerHTML='<div class="empty"><b>No budget data on this device yet.</b><br><br>Tap <b>Import Prior HTML</b> and choose your previous <i>budget-dashboard-updated.html</i> file.</div>';
+   totals(); return;
+ }
+ data.forEach((s,si)=>{
+  const sec=document.createElement('div'); sec.className='section';
+  const sub=(s.rows||[]).reduce((x,r)=>x+monthlyValue(r),0);
+  const kind=s.kind||'recurring';
+  const badge=kind==='recurring'?'Normal Budget':kind==='sinking'?'Sinking Fund':'Excluded from Monthly';
+  const headTotal=kind==='one-time'
+    ? 'One-time total: '+money((s.rows||[]).reduce((x,r)=>x+(Number(r.a)||0),0))
+    : 'Monthly: '+money(sub);
+  sec.innerHTML=
+   '<div class="section-head"><h2>'+esc(s.name)+' <span class="badge '+kind+'">'+badge+'</span></h2><div class="subtotal">'+headTotal+'</div></div>'+
+   '<div class="table-wrap"><table><thead><tr><th>Description</th><th>Amount</th><th>Type</th><th>Monthly Amount</th><th>Yearly Amount</th><th>Delete</th></tr></thead><tbody>'+
+   (s.rows||[]).map((r,ri)=>
+    '<tr>'+
+    '<td><input value="'+esc(r.d)+'" onchange="upd('+si+','+ri+',\\'d\\',this.value)"></td>'+
+    '<td><input type="number" step="0.01" min="0" value="'+(Number(r.a)||0)+'" onchange="upd('+si+','+ri+',\\'a\\',this.value)"></td>'+
+    '<td><select onchange="upd('+si+','+ri+',\\'t\\',this.value)">'+
+      '<option value="monthly" '+(r.t==='monthly'?'selected':'')+'>Monthly</option>'+
+      '<option value="annual" '+(r.t==='annual'?'selected':'')+'>Annual</option>'+
+      '<option value="one-time" '+(r.t==='one-time'?'selected':'')+'>One-Time</option>'+
+    '</select></td>'+
+    '<td class="money">'+money(monthlyValue(r))+'</td>'+
+    '<td class="money">'+(r.t==='one-time'?'—':money(monthlyValue(r)*12))+'</td>'+
+    '<td><button class="del" onclick="delRow('+si+','+ri+')">X</button></td>'+
+    '</tr>').join('')+
+   '</tbody></table></div><button class="add" onclick="addRow('+si+')">Add Line</button>';
+  host.appendChild(sec);
+ });
+ totals(); save();
+}
+function totals(){
+ const normal=data.filter(s=>(s.kind||'recurring')==='recurring').flatMap(s=>s.rows||[]).reduce((x,r)=>x+monthlyValue(r),0);
+ const sinking=data.filter(s=>s.kind==='sinking').flatMap(s=>s.rows||[]).reduce((x,r)=>x+monthlyValue(r),0);
+ document.getElementById('normalMonthly').textContent=money(normal);
+ document.getElementById('normalAnnual').textContent=money(normal*12);
+ document.getElementById('sinkingMonthly').textContent=money(sinking);
+ document.getElementById('allMonthly').textContent=money(normal+sinking);
+}
+function upd(si,ri,k,v){data[si].rows[ri][k]=k==='a'?Number(v):v;render();}
+function delRow(si,ri){data[si].rows.splice(ri,1);render();}
+function addRow(si){data[si].rows.push({d:'New Expense',a:0,t:data[si].kind==='one-time'?'one-time':'monthly'});render();}
+function addCustomSection(){
+ const name=prompt('Category name:'); if(!name)return;
+ data.push({name,kind:'recurring',rows:[]});render();
+}
+function clearLocalData(){
+ if(confirm('Clear the budget saved on this device? Export a JSON backup first if you want to keep it.')){
+   localStorage.removeItem(STORAGE_KEY); data=[]; render();
+ }
+}
+function exportJSON(){
+ const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+ const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+ a.download='budget-dashboard-backup.json'; a.click(); URL.revokeObjectURL(a.href);
+}
+function exportCSV(){
+ let rows=[['Category','Description','Amount','Type','Monthly Amount','Yearly Amount']];
+ data.forEach(s=>(s.rows||[]).forEach(r=>rows.push([s.name,r.d,r.a,r.t,monthlyValue(r),r.t==='one-time'?'':monthlyValue(r)*12])));
+ const csv=rows.map(row=>row.map(v=>'"'+String(v).replaceAll('"','""')+'"').join(',')).join('\\n');
+ const blob=new Blob([csv],{type:'text/csv'});
+ const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+ a.download='budget-dashboard.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
+
+document.getElementById('jsonImport').addEventListener('change', async e=>{
+ const file=e.target.files[0]; if(!file)return;
+ try{
+   const parsed=JSON.parse(await file.text());
+   if(!Array.isArray(parsed)) throw new Error('Invalid budget backup.');
+   data=parsed; render(); alert('Budget imported and saved on this device.');
+ }catch(err){ alert('I could not import that JSON file.'); }
+ e.target.value='';
+});
+
+document.getElementById('htmlImport').addEventListener('change', async e=>{
+ const file=e.target.files[0]; if(!file)return;
+ try{
+   const text=await file.text();
+
+   // Supports the immediately previous Budget Dashboard HTML,
+   // which stored its starting rows in: const defaults=[ ... ];
+   const marker='const defaults=';
+   const start=text.indexOf(marker);
+   if(start<0) throw new Error('defaults not found');
+
+   let i=start+marker.length;
+   while(i<text.length && /\\s/.test(text[i])) i++;
+   if(text[i] !== '[') throw new Error('array not found');
+
+   let depth=0, inString=false, quote='', escaped=false, end=-1;
+   for(let j=i;j<text.length;j++){
+     const ch=text[j];
+     if(inString){
+       if(escaped){escaped=false;continue;}
+       if(ch==='\\\\'){escaped=true;continue;}
+       if(ch===quote){inString=false;quote='';}
+       continue;
+     }
+     if(ch==='"' || ch==="'" || ch==='`'){inString=true;quote=ch;continue;}
+     if(ch==='[') depth++;
+     if(ch===']'){depth--; if(depth===0){end=j+1;break;}}
+   }
+   if(end<0) throw new Error('array end not found');
+
+   const arrayText=text.slice(i,end);
+   const imported=(new Function('"use strict"; return ('+arrayText+');'))();
+   if(!Array.isArray(imported)) throw new Error('invalid data');
+   data=imported; render();
+   alert('Previous Budget Dashboard data imported and saved on this device.');
+ }catch(err){
+   alert('I could not read budget data from that HTML. Choose the budget-dashboard-updated.html file from the prior version.');
+ }
+ e.target.value='';
+});
+
+render();
+</script>
+</body>
+</html>
